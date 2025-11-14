@@ -616,7 +616,7 @@ bpred_dir_lookup(struct bpred_dir_t *pred_dir,	/* branch dir predictor inst */
             p = &pred_dir->config.alloy.l2_1table[l2index];
             p = &pred_dir->config.alloy.l2_2table[l2index];
 
-
+      }
       break;
     case BPred2bit:
       p = &pred_dir->config.bimod.table[BIMOD_HASH(pred_dir, baddr)];
@@ -627,7 +627,6 @@ bpred_dir_lookup(struct bpred_dir_t *pred_dir,	/* branch dir predictor inst */
     default:
       panic("bogus branch direction predictor class");
     }
-
   return (char *)p;
 }
 
@@ -646,7 +645,7 @@ bpred_lookup(struct bpred_t *pred,	/* branch predictor instance */
 	     int is_call,		/* non-zero if inst is fn call */
 	     int is_return,		/* non-zero if inst is fn return */
 	     struct bpred_update_t *dir_update_ptr, /* pred state pointer */
-	     int *stack_recover_idx);	/* Non-speculative top-of-stack;
+	     int *stack_recover_idx)	/* Non-speculative top-of-stack;
 					 * used on mispredict recovery */
 {
   struct bpred_btb_ent_t *pbtb = NULL;
