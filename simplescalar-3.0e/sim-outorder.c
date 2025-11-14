@@ -123,6 +123,11 @@ static int twolev_nelt = 4;
 static int twolev_config[4] =
   { /* l1size */1, /* l2size */1024, /* hist */8, /* xor */FALSE};
 
+/* alloyed predictor config (<l1size> <l2size> <p> <g>) NEW CODE -> */
+static int alloyed_nelt = 4;
+static int alloyed_config[4] =
+{ /* l1size */8, /* l2size */256, /* p */4, /* g */4}; /* <- NEW CODE */
+
 /* combining predictor config (<meta_table_size> */
 static int comb_nelt = 1;
 static int comb_config[1] =
@@ -667,6 +672,13 @@ sim_reg_options(struct opt_odb_t *odb)
 		   /* default */twolev_config,
                    /* print */TRUE, /* format */NULL, /* !accrue */FALSE);
 
+  opt_reg_int_list(odb, "-bpred:alloyed",     /* NEW CODE -> */
+                   "alloyed predictor config "
+		   "(<l1size> <l2size> <p> <g>)",
+                   alloyed_config, alloyed_nelt, &alloyed_nelt,
+		   /* default */alloyed_config,
+                   /* print */TRUE, /* format */NULL, /* !accrue */FALSE); /* <- NEW CODE */
+
   opt_reg_int_list(odb, "-bpred:comb",
 		   "combining predictor config (<meta_table_size>)",
 		   comb_config, comb_nelt, &comb_nelt,
@@ -952,6 +964,25 @@ sim_check_options(struct opt_odb_t *odb,        /* options database */
 			  /* btb assoc */btb_config[1],
 			  /* ret-addr stack size */ras_size);
     }
+  else if (!mystricmp(pred_type, "alloyed")) /* NEW CODE -> */
+    {
+      /* alloyed adaptive predictor, bpred_create() checks args */
+      if (alloyed_nelt != 4)
+	fatal("bad alloyed pred config (<l1size> <l2size> <p> <g>)");
+      if (btb_nelt != 2)
+	fatal("bad btb config (<num_sets> <associativity>)");
+
+      pred = bpred_create(BPredAlloy,
+			  /* bimod table size */0,
+			  /* alloyed l1 size */alloyed_config[0],
+			  /* alloyed l2 size */alloyed_config[1],
+			  /* meta table size */0,
+			  /* p - PaBHT bits per entry */alloyed_config[2],
+			  /* g - GBHR bits */alloyed_config[3],
+			  /* btb sets */btb_config[0],
+			  /* btb assoc */btb_config[1],
+			  /* ret-addr stack size */ras_size);
+    } /* <- NEW CODE */
   else if (!mystricmp(pred_type, "comb"))
     {
       /* combining predictor, bpred_create() checks args */

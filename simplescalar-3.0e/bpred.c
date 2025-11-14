@@ -73,7 +73,9 @@ bpred_create(enum bpred_class class,	/* type of predictor to create */
 	     unsigned int xor,  	/* history xor address flag */
 	     unsigned int btb_sets,	/* number of sets in BTB */ 
 	     unsigned int btb_assoc,	/* BTB associativity */
-	     unsigned int retstack_size) /* num entries in ret-addr stack */
+	     unsigned int retstack_size, /* num entries in ret-addr stack */
+       unsigned int p,    /* NEW CODE - PaBHT bits per entry */
+       unsigned int g)    /* NEW CODE - GBHR bits */
 {
   struct bpred_t *pred;
 
@@ -103,6 +105,11 @@ bpred_create(enum bpred_class class,	/* type of predictor to create */
       bpred_dir_create(class, l1size, l2size, shift_width, xor);
 
     break;
+
+  case BPredAlloy:  /* NEW CODE -> */
+    pred->dirpred.alloy = 
+      bpred_dir_create(class, l1size, l2size, g, p);
+    break;          /* <- NEW CODE */
 
   case BPred2bit:
     pred->dirpred.bimod = 
@@ -188,6 +195,7 @@ bpred_dir_create (
   struct bpred_dir_t *pred_dir;
   unsigned int cnt;
   int flipflop;
+  int flipflop0, flipflop1, flipflop2; /* NEW CODE */
 
   if (!(pred_dir = calloc(1, sizeof(struct bpred_dir_t))))
     fatal("out of virtual memory");
@@ -196,7 +204,54 @@ bpred_dir_create (
 
   cnt = -1;
   switch (class) {
-  case BPred2Level:
+  case BPredAlloy:  /* NEW CODE -> */
+    {
+      if (!l1size || (l1size & (l1size-1)) != 0)
+	fatal("level-1 size, `%d', must be non-zero and a power of two", 
+	      l1size);
+      pred_dir->config.alloy.l1size = l1size;
+      
+      if (!l2size || (l2size & (l2size-1)) != 0)
+	fatal("level-2 size, `%d', must be non-zero and a power of two", 
+	      l2size);
+      pred_dir->config.alloy.l2size = l2size;
+      
+      if (!shift_width || shift_width > 30)
+	fatal("shift register width, `%d', must be non-zero and positive",
+	      shift_width);
+      pred_dir->config.alloy.p = shift_width;
+      
+      pred_dir->config.alloy.g = xor;
+      pred_dir->config.alloy.shiftregs = calloc(l1size, sizeof(int));
+      if (!pred_dir->config.alloy.shiftregs)
+	fatal("cannot allocate shift register table");
+      pred_dir->config.alloy.l2_0table = calloc(l2size, sizeof(unsigned char));
+      if (!pred_dir->config.alloy.l2_0table)
+	fatal("cannot allocate second level table 0");
+      pred_dir->config.alloy.l2_1table = calloc(l2size, sizeof(unsigned char));
+      if (!pred_dir->config.alloy.l2_1table)
+	fatal("cannot allocate second level table 1");
+      pred_dir->config.alloy.l2_2table = calloc(l2size, sizeof(unsigned char));
+      if (!pred_dir->config.alloy.l2_2table)
+	fatal("cannot allocate second level table 2");
+
+      /* initialize counters to weakly this-or-that */
+      flipflop0 = 1;
+      flipflop1 = 2;
+      flipflop2 = 0;
+      for (cnt = 0; cnt < l2size; cnt++)
+	{
+	  pred_dir->config.alloy.l2_0table[cnt] = flipflop0;
+	  flipflop0 = 3 - flipflop0;
+    pred_dir->config.alloy.l2_1table[cnt] = flipflop1;
+	  flipflop1 = 3 - flipflop1;
+    pred_dir->config.alloy.l2_2table[cnt] = flipflop2;
+	  flipflop2 = 3 - flipflop2;
+	}
+  pred_dir->config.alloy.gbhr = 0; /* Initialize GBHR to 0 */
+      break; // <- NEW CODE
+    }
+    case BPred2Level:
     {
       if (!l1size || (l1size & (l1size-1)) != 0)
 	fatal("level-1 size, `%d', must be non-zero and a power of two", 
@@ -278,6 +333,13 @@ bpred_dir_config(
       pred_dir->config.two.xor ? "" : "no", pred_dir->config.two.l2size);
     break;
 
+  case BPredAlloy:  /* NEW CODE -> */
+    fprintf(stream,
+      "pred_dir: %s: alloy: %d l1-sz, %d p, %s g, %d l2-sz, direct-mapped\n",
+      name, pred_dir->config.alloy.l1size, pred_dir->config.alloy.p,
+      pred_dir->config.alloy.g ? "" : "no", pred_dir->config.alloy.l2size);
+    break;          /* <- NEW CODE */
+
   case BPred2bit:
     fprintf(stream, "pred_dir: %s: 2-bit: %d entries, direct-mapped\n",
       name, pred_dir->config.bimod.size);
@@ -317,6 +379,13 @@ bpred_config(struct bpred_t *pred,	/* branch predictor instance */
 	    pred->btb.sets, pred->btb.assoc);
     fprintf(stream, "ret_stack: %d entries", pred->retstack.size);
     break;
+
+  case BPredAlloy:  /* NEW CODE -> */
+    bpred_dir_config (pred->dirpred.alloy, "alloyed", stream);
+    fprintf(stream, "btb: %d sets x %d associativity", 
+	    pred->btb.sets, pred->btb.assoc);
+    fprintf(stream, "ret_stack: %d entries", pred->retstack.size);
+    break;          /* <- NEW CODE */
 
   case BPred2bit:
     bpred_dir_config (pred->dirpred.bimod, "bimod", stream);
@@ -364,6 +433,9 @@ bpred_reg_stats(struct bpred_t *pred,	/* branch predictor instance */
     case BPred2Level:
       name = "bpred_2lev";
       break;
+    case BPredAlloy:        /* NEW CODE -> */
+      name = "bpred_alloy";
+      break;                /* <- NEW CODE */
     case BPred2bit:
       name = "bpred_bimod";
       break;
@@ -530,6 +602,22 @@ bpred_dir_lookup(struct bpred_dir_t *pred_dir,	/* branch dir predictor inst */
         p = &pred_dir->config.two.l2table[l2index];
       }
       break;
+    case BPredAlloy: /* NEW CODE -> */
+      {
+        int k = (int)log2(pred_dir->config.alloy.l1size);
+	      int l1index, l2index;
+        /* Para sacar k hacemos log2 de l1size que guardará el número de entradas de la BHT.
+           Número de entradas de la BHT = 2^k                                             */                  
+           l1index = baddr & (1 << k - 1); // l1index ~ i
+           l2index = (l1index << pred_dir->config.alloy.g + pred_dir->config.alloy.p 
+            & ((pred_dir->config.alloy.gbhr & (1 << pred_dir->config.alloy.g - 1)) << pred_dir->config.alloy.p) 
+            & pred_dir->config.alloy.shiftregs[l1index]); // l2index ~ c
+            p = &pred_dir->config.alloy.l2_0table[l2index];
+            p = &pred_dir->config.alloy.l2_1table[l2index];
+            p = &pred_dir->config.alloy.l2_2table[l2index];
+
+
+      break;
     case BPred2bit:
       p = &pred_dir->config.bimod.table[BIMOD_HASH(pred_dir, baddr)];
       break;
@@ -558,7 +646,7 @@ bpred_lookup(struct bpred_t *pred,	/* branch predictor instance */
 	     int is_call,		/* non-zero if inst is fn call */
 	     int is_return,		/* non-zero if inst is fn return */
 	     struct bpred_update_t *dir_update_ptr, /* pred state pointer */
-	     int *stack_recover_idx)	/* Non-speculative top-of-stack;
+	     int *stack_recover_idx);	/* Non-speculative top-of-stack;
 					 * used on mispredict recovery */
 {
   struct bpred_btb_ent_t *pbtb = NULL;

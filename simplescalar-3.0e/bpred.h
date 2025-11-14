@@ -133,11 +133,11 @@ struct bpred_dir_t {
       unsigned char *l2table;	/* level-2 prediction state table */
     } two;
     struct { /* NEW CODE -> */
-      // FALTA: GBHR -> defineix 'g'
-      int k;		 /* number of bits to index PaBHT entries (2^k) */
-      int c;		/* number of PHT entries */
-      int p;		/* PaBHT bits per entry */
-      int g;    /* number of GBHR bits */
+      int l1size;		/* (l1size ~ k) - number of bits to index PaBHT entries (2^k) */
+      int l2size;		/* number of PHT entries */
+      int p;		    /* PaBHT bits per entry */
+      int g;        /* GBHR bits */
+      int gbhr;         /* global base history register */
       int *shiftregs;		/* number of p bits entries per PaBHT */
       unsigned char *l2_0table;	/* Replicated PHT tables with 2-bit saturating counter */
       unsigned char *l2_1table;	
@@ -153,7 +153,7 @@ struct bpred_t {
     struct bpred_dir_t *bimod;	  /* first direction predictor */
     struct bpred_dir_t *twolev;	  /* second direction predictor */
     struct bpred_dir_t *meta;	  /* meta predictor */
-    struct bpred_dir_t *alloy;   /* NEW CODE*/
+    struct bpred_dir_t *alloy;   /* NEW CODE */
   } dirpred;
 
   struct {
@@ -211,7 +211,10 @@ bpred_create(enum bpred_class class,	/* type of predictor to create */
 	     unsigned int xor,		/* history xor address flag */
 	     unsigned int btb_sets,	/* number of sets in BTB */ 
 	     unsigned int btb_assoc,	/* BTB associativity */
-	     unsigned int retstack_size);/* num entries in ret-addr stack */
+	     unsigned int retstack_size,/* num entries in ret-addr stack */
+       unsigned int p,     /* NEW CODE - PaBHT bits per entry */
+       unsigned int g,     /* NEW CODE - GBHR bits */
+       unsigned int gbhr); /* NEW CODE - GBHR*/
 
 /* create a branch direction predictor */
 struct bpred_dir_t *		/* branch direction predictor instance */
