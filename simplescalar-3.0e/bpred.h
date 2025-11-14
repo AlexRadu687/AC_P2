@@ -104,8 +104,8 @@ enum bpred_class {
   BPred2bit,			/* 2-bit saturating cntr pred (dir mapped) */
   BPredTaken,			/* static predict taken */
   BPredNotTaken,		/* static predict not taken */
-  BPred_NUM,
-  BPred_alloy     /* NEW CODE*/
+  BPredAlloy,     /* NEW CODE*/
+  BPred_NUM
 };
 
 /* an entry in a BTB */
@@ -132,19 +132,17 @@ struct bpred_dir_t {
       int *shiftregs;		/* level-1 history table */
       unsigned char *l2table;	/* level-2 prediction state table */
     } two;
-    struct { /* NEW CODE */
+    struct { /* NEW CODE -> */
       // FALTA: GBHR -> defineix 'g'
-      int l1size;		/* level-1 size, number of history regs */
-      int l2size;		/* level-2 size, number of pred states */
-      int shift_width;		/* amount of history in level-1 shift regs */
-      int g; // Probar, puede sustitur el xor
-      // int xor;			/* history xor address flag */
-      int *shiftregs;		/* level-1 history table , PaBHT */
-      unsigned char *l2_0table;	/* level-2 prediction state table, PHT replicat tres vegades*/
+      int k;		 /* number of bits to index PaBHT entries (2^k) */
+      int c;		/* number of PHT entries */
+      int p;		/* PaBHT bits per entry */
+      int g;    /* number of GBHR bits */
+      int *shiftregs;		/* number of p bits entries per PaBHT */
+      unsigned char *l2_0table;	/* Replicated PHT tables with 2-bit saturating counter */
       unsigned char *l2_1table;	
       unsigned char *l2_2table;	
-    } alloy;  /* NEW CODE*/
-    
+    } alloy;  /* <- NEW CODE */
   } config;
 };
 
@@ -198,6 +196,7 @@ struct bpred_update_t {
     unsigned int bimod  : 1;    /* bimodal predictor */
     unsigned int twolev : 1;    /* 2-level predictor */
     unsigned int meta   : 1;    /* meta predictor (0..bimod / 1..2lev) */
+    unsigned int alloyed: 1;    /* NEW CODE */
   } dir;
 };
 
