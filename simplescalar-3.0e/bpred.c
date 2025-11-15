@@ -222,8 +222,14 @@ bpred_dir_create (
       pred_dir->config.alloy.p = shift_width;
       
       pred_dir->config.alloy.g = xor;
-      pred_dir->config.alloy.shiftregs = calloc(l1size, sizeof(int));
+      int l1_total_size = pow(2, l1size);
+      pred_dir->config.alloy.shiftregs = calloc(l1_total_size, sizeof(pred_dir->config.alloy.p)); // 2^k entries of p bits
       if (!pred_dir->config.alloy.shiftregs)
+
+      for (int i = 0; i < l1_total_size; i++) {
+        pred_dir->config.alloy.shiftregs[i] = pow(2, pred_dir->config.alloy.p) - 1; // p quantity of bits initialized to 1
+      }
+
 	fatal("cannot allocate shift register table");
       pred_dir->config.alloy.l2_0table = calloc(l2size, sizeof(unsigned char));
       if (!pred_dir->config.alloy.l2_0table)
@@ -248,7 +254,7 @@ bpred_dir_create (
     pred_dir->config.alloy.l2_2table[cnt] = flipflop2;
 	  flipflop2 = 3 - flipflop2;
 	}
-  pred_dir->config.alloy.gbhr = 0; /* Initialize GBHR to 0 */
+  pred_dir->config.alloy.gbhr = 4294967295; /* Initialize all 32 bits of GBHR to 1 */
       break; // <- NEW CODE
     }
     case BPred2Level:
@@ -562,7 +568,7 @@ bpred_after_priming(struct bpred_t *bpred)
 /* predicts a branch direction */
 char *						/* pointer to counter */
 bpred_dir_lookup(struct bpred_dir_t *pred_dir,	/* branch dir predictor inst */
-		 md_addr_t baddr)		/* branch address */
+		 md_addr_t baddr, int *index)		/* branch address */ // added index param for alloy NEW CODE
 {
   unsigned char *p = NULL;
 
@@ -612,12 +618,10 @@ bpred_dir_lookup(struct bpred_dir_t *pred_dir,	/* branch dir predictor inst */
            l2index = (l1index << pred_dir->config.alloy.g + pred_dir->config.alloy.p 
             & ((pred_dir->config.alloy.gbhr & (1 << pred_dir->config.alloy.g - 1)) << pred_dir->config.alloy.p) 
             & pred_dir->config.alloy.shiftregs[l1index]); // l2index ~ c
-            p = &pred_dir->config.alloy.l2_0table[l2index];
-            p = &pred_dir->config.alloy.l2_1table[l2index];
-            p = &pred_dir->config.alloy.l2_2table[l2index];
-
+            index = l2index; // case for alloy predictor
+            p = &pred_dir->config.alloy.l2_0table[l2index]; // to return something, irrelevant
       }
-      break;
+      break;        /* <- NEW CODE */
     case BPred2bit:
       p = &pred_dir->config.bimod.table[BIMOD_HASH(pred_dir, baddr)];
       break;
@@ -649,7 +653,7 @@ bpred_lookup(struct bpred_t *pred,	/* branch predictor instance */
 					 * used on mispredict recovery */
 {
   struct bpred_btb_ent_t *pbtb = NULL;
-  int index, i;
+  int index, i, l2index;  // added l2index for alloy NEW CODE
 
   if (!dir_update_ptr)
     panic("no bpred update record");
@@ -670,9 +674,10 @@ bpred_lookup(struct bpred_t *pred,	/* branch predictor instance */
       if ((MD_OP_FLAGS(op) & (F_CTRL|F_UNCOND)) != (F_CTRL|F_UNCOND))
 	{
 	  char *bimod, *twolev, *meta;
-	  bimod = bpred_dir_lookup (pred->dirpred.bimod, baddr);
-	  twolev = bpred_dir_lookup (pred->dirpred.twolev, baddr);
-	  meta = bpred_dir_lookup (pred->dirpred.meta, baddr);
+    // added NULL index param for alloy NEW CODE
+	  bimod = bpred_dir_lookup (pred->dirpred.bimod, baddr, NULL);       
+	  twolev = bpred_dir_lookup (pred->dirpred.twolev, baddr, NULL);
+	  meta = bpred_dir_lookup (pred->dirpred.meta, baddr, NULL);
 	  dir_update_ptr->pmeta = meta;
 	  dir_update_ptr->dir.meta  = (*meta >= 2);
 	  dir_update_ptr->dir.bimod = (*bimod >= 2);
@@ -693,14 +698,21 @@ bpred_lookup(struct bpred_t *pred,	/* branch predictor instance */
       if ((MD_OP_FLAGS(op) & (F_CTRL|F_UNCOND)) != (F_CTRL|F_UNCOND))
 	{
 	  dir_update_ptr->pdir1 =
-	    bpred_dir_lookup (pred->dirpred.twolev, baddr);
+	    bpred_dir_lookup (pred->dirpred.twolev, baddr, NULL);
 	}
       break;
+    case BPredAlloy:  /* NEW CODE -> */
+      if ((MD_OP_FLAGS(op) & (F_CTRL|F_UNCOND)) != (F_CTRL|F_UNCOND))
+	{
+	  dir_update_ptr->pdir1 = bpred_dir_lookup (pred->dirpred.alloy, baddr, &l2index);
+	  dir_update_ptr->l2index = l2index;
+	}
+      break;        /* <- NEW CODE */
     case BPred2bit:
       if ((MD_OP_FLAGS(op) & (F_CTRL|F_UNCOND)) != (F_CTRL|F_UNCOND))
 	{
 	  dir_update_ptr->pdir1 =
-	    bpred_dir_lookup (pred->dirpred.bimod, baddr);
+	    bpred_dir_lookup (pred->dirpred.bimod, baddr, NULL);  // added NULL index param for alloy NEW CODE
 	}
       break;
     case BPredTaken:
