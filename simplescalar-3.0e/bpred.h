@@ -133,7 +133,7 @@ struct bpred_dir_t {
       unsigned char *l2table;	/* level-2 prediction state table */
     } two;
     struct { /* NEW CODE -> */
-      int l1size;		/* (l1size ~ k) - number of bits to index PaBHT entries (2^k) */
+      int l1size;		/* (l1size ~ 2^k) - number of bits to index PaBHT entries */
       int l2size;		/* number of PHT entries */
       int p;		    /* PaBHT bits per entry */
       int g;        /* GBHR bits */
@@ -174,6 +174,7 @@ struct bpred_t {
   counter_t used_ras;		/* num RAS predictions used */
   counter_t used_bimod;		/* num bimodal predictions used (BPredComb) */
   counter_t used_2lev;		/* num 2-level predictions used (BPredComb) */
+  counter_t used_alloy;    /* num alloy predictions used (BPredAlloy) NEW CODE */
   counter_t jr_hits;		/* num correct addr-predictions for JR's */
   counter_t jr_seen;		/* num JR's seen */
   counter_t jr_non_ras_hits;	/* num correct addr-preds for non-RAS JR's */

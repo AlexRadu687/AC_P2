@@ -222,11 +222,10 @@ bpred_dir_create (
       pred_dir->config.alloy.p = shift_width;
       
       pred_dir->config.alloy.g = xor;
-      int l1_total_size = pow(2, l1size);
-      pred_dir->config.alloy.shiftregs = calloc(l1_total_size, sizeof(pred_dir->config.alloy.p)); // 2^k entries of p bits
+      pred_dir->config.alloy.shiftregs = calloc(l1size, sizeof(pred_dir->config.alloy.p)); // 2^k entries of p bits
       if (!pred_dir->config.alloy.shiftregs)
 
-      for (int i = 0; i < l1_total_size; i++) {
+      for (int i = 0; i < l1size; i++) {
         pred_dir->config.alloy.shiftregs[i] = pow(2, pred_dir->config.alloy.p) - 1; // p quantity of bits initialized to 1
       }
 
@@ -612,14 +611,20 @@ bpred_dir_lookup(struct bpred_dir_t *pred_dir,	/* branch dir predictor inst */
       {
         int k = (int)log2(pred_dir->config.alloy.l1size);
 	      int l1index, l2index;
+        int i;
         /* Para sacar k hacemos log2 de l1size que guardará el número de entradas de la BHT.
-           Número de entradas de la BHT = 2^k                                             */                  
-           l1index = baddr & (1 << k - 1); // l1index ~ i
-           l2index = (l1index << pred_dir->config.alloy.g + pred_dir->config.alloy.p 
-            & ((pred_dir->config.alloy.gbhr & (1 << pred_dir->config.alloy.g - 1)) << pred_dir->config.alloy.p) 
-            & pred_dir->config.alloy.shiftregs[l1index]); // l2index ~ c
-            index = l2index; // case for alloy predictor
-            p = &pred_dir->config.alloy.l2_0table[l2index]; // to return something, irrelevant
+          Número de entradas de la BHT = 2^k  */                  
+        l1index = baddr & ((1 << k)- 1); // l1index
+        // calculate (i) bits necessari to index l2 table (c), (i) needs to be at least 1
+        i = log2(pred_dir->config.alloy.l2size) - pred_dir->config.alloy.g - pred_dir->config.alloy.p;
+        if (i >= 1)
+        {
+          l2index = (baddr & (1 << i - 1) << pred_dir->config.alloy.g + pred_dir->config.alloy.p 
+          & ((pred_dir->config.alloy.gbhr & (1 << pred_dir->config.alloy.g - 1)) << pred_dir->config.alloy.p) 
+          & pred_dir->config.alloy.shiftregs[l1index]); // l2index ~ c
+          index = l2index; // case for alloy predictor
+          p = &pred_dir->config.alloy.l2_0table[l2index]; // to return something, irrelevant
+        }
       }
       break;        /* <- NEW CODE */
     case BPred2bit:
@@ -878,6 +883,8 @@ bpred_update(struct bpred_t *pred,	/* branch predictor instance */
     {
       if (dir_update_ptr->dir.meta)
 	pred->used_2lev++;
+      else if(dir_update_ptr->dir.alloyed) // added dir.alloyed for alloy NEW CODE
+  pred->used_alloy++;
       else
 	pred->used_bimod++;
     }
@@ -926,17 +933,61 @@ bpred_update(struct bpred_t *pred,	/* branch predictor instance */
   /* update L1 table if appropriate */
   /* L1 table is updated unconditionally for combining predictor too */
   if ((MD_OP_FLAGS(op) & (F_CTRL|F_UNCOND)) != (F_CTRL|F_UNCOND) &&
-      (pred->class == BPred2Level || pred->class == BPredComb))
+      (pred->class == BPred2Level || pred->class == BPredComb || pred->class == BPredAlloy)) // added BPredAlloy for alloy NEW CODE
     {
       int l1index, shift_reg;
       
-      /* also update appropriate L1 history register */
-      l1index =
-	(baddr >> MD_BR_SHIFT) & (pred->dirpred.twolev->config.two.l1size - 1);
-      shift_reg =
-	(pred->dirpred.twolev->config.two.shiftregs[l1index] << 1) | (!!taken);
-      pred->dirpred.twolev->config.two.shiftregs[l1index] =
-	shift_reg & ((1 << pred->dirpred.twolev->config.two.shift_width) - 1);
+      switch (pred->class)  
+      {
+      case BPred2Level:
+      case BPredComb:
+        /* also update appropriate L1 history register */
+        l1index = (baddr >> MD_BR_SHIFT) & (pred->dirpred.twolev->config.two.l1size - 1);
+        shift_reg = (pred->dirpred.twolev->config.two.shiftregs[l1index] << 1) | (!!taken);
+        pred->dirpred.twolev->config.two.shiftregs[l1index] =
+	      shift_reg & ((1 << pred->dirpred.twolev->config.two.shift_width) - 1);
+        break;
+        
+      case BPredAlloy:      /* NEW CODE -> */
+        // update PaBHT - Per address Branch History Table
+        int k = (int)log2(pred->dirpred.alloy->config.alloy.l1size);              
+        l1index = baddr & ((1 << k) - 1);
+        pred->dirpred.alloy->config.alloy.shiftregs[l1index] = (pred->dirpred.alloy->config.alloy.shiftregs[l1index] << 1) | (!!taken);
+
+        // update GBHR - Global Branch History Register
+        pred->dirpred.alloy->config.alloy.gbhr = (pred->dirpred.alloy->config.alloy.gbhr << 1) | (!!taken);
+
+        // update all PHT - Pattern History Table
+        if (taken)
+        {
+          if(pred->dirpred.alloy->config.alloy.l2_0table[dir_update_ptr->l2index] < 3)
+          {
+            pred->dirpred.alloy->config.alloy.l2_0table[dir_update_ptr->l2index]++;
+          }
+          if(pred->dirpred.alloy->config.alloy.l2_1table[dir_update_ptr->l2index] < 3)
+          {
+            pred->dirpred.alloy->config.alloy.l2_1table[dir_update_ptr->l2index]++;
+          }
+          if(pred->dirpred.alloy->config.alloy.l2_2table[dir_update_ptr->l2index] < 3)
+          {
+            pred->dirpred.alloy->config.alloy.l2_2table[dir_update_ptr->l2index]++;
+          }
+        } else {
+          if(pred->dirpred.alloy->config.alloy.l2_0table[dir_update_ptr->l2index] > 0)
+          {
+            pred->dirpred.alloy->config.alloy.l2_0table[dir_update_ptr->l2index]--;
+          }
+          if(pred->dirpred.alloy->config.alloy.l2_1table[dir_update_ptr->l2index] > 0)
+          {
+            pred->dirpred.alloy->config.alloy.l2_1table[dir_update_ptr->l2index]--;
+          }
+          if(pred->dirpred.alloy->config.alloy.l2_2table[dir_update_ptr->l2index] > 0)
+          {
+            pred->dirpred.alloy->config.alloy.l2_2table[dir_update_ptr->l2index]--;
+          }
+        }
+        break;          /* <- NEW CODE */
+      }
     }
 
   /* find BTB entry if it's a taken branch (don't allocate for non-taken) */
