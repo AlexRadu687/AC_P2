@@ -142,6 +142,7 @@ struct bpred_dir_t {
       unsigned char *l2_0table;	/* Replicated PHT tables with 2-bit saturating counter */
       unsigned char *l2_1table;	
       unsigned char *l2_2table;	
+      unsigned char *l2_media_table;
     } alloy;  /* <- NEW CODE */
   } config;
 };

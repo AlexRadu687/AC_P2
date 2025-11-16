@@ -239,6 +239,9 @@ bpred_dir_create (
       pred_dir->config.alloy.l2_2table = calloc(l2size, sizeof(unsigned char));
       if (!pred_dir->config.alloy.l2_2table)
 	fatal("cannot allocate second level table 2");
+      pred_dir->config.alloy.l2_media_table = calloc(l2size, sizeof(unsigned char));
+      if (!pred_dir->config.alloy.l2_media_table)
+  fatal("cannot allocate second level table media");
 
       /* initialize counters to weakly this-or-that */
       flipflop0 = 1;
@@ -252,8 +255,10 @@ bpred_dir_create (
 	  flipflop1 = 3 - flipflop1;
     pred_dir->config.alloy.l2_2table[cnt] = flipflop2;
 	  flipflop2 = 3 - flipflop2;
-	}
-  pred_dir->config.alloy.gbhr = 4294967295; /* Initialize all 32 bits of GBHR to 1 */
+    pred_dir->config.alloy.l2_media_table[cnt] = round((float)(pred_dir->config.alloy.l2_0table[cnt] +
+    pred_dir->config.alloy.l2_1table[cnt] + pred_dir->config.alloy.l2_2table[cnt])) / 3;	
+  }
+    pred_dir->config.alloy.gbhr = 4294967295; /* Initialize all 32 bits of GBHR to 1 */
       break; // <- NEW CODE
     }
     case BPred2Level:
@@ -623,7 +628,7 @@ bpred_dir_lookup(struct bpred_dir_t *pred_dir,	/* branch dir predictor inst */
           & ((pred_dir->config.alloy.gbhr & (1 << pred_dir->config.alloy.g - 1)) << pred_dir->config.alloy.p) 
           & pred_dir->config.alloy.shiftregs[l1index]); // l2index ~ c
           index = l2index; // case for alloy predictor
-          p = &pred_dir->config.alloy.l2_0table[l2index]; // to return something, irrelevant
+          p = &pred_dir->config.alloy.l2_media_table[l2index]; // to return the average counter from the three tables
         }
       }
       break;        /* <- NEW CODE */
@@ -986,6 +991,10 @@ bpred_update(struct bpred_t *pred,	/* branch predictor instance */
             pred->dirpred.alloy->config.alloy.l2_2table[dir_update_ptr->l2index]--;
           }
         }
+        pred->dirpred.alloy->config.alloy.l2_media_table[dir_update_ptr->l2index] = 
+          round((float)(pred->dirpred.alloy->config.alloy.l2_0table[dir_update_ptr->l2index] +
+          pred->dirpred.alloy->config.alloy.l2_1table[dir_update_ptr->l2index] +
+          pred->dirpred.alloy->config.alloy.l2_2table[dir_update_ptr->l2index])) / 3;
         break;          /* <- NEW CODE */
       }
     }
